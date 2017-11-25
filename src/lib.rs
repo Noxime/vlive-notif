@@ -5,12 +5,17 @@
 /// Simple listener
 ///
 /// ```rust
+/// //Our listener
 /// struct Handler;
+///
 /// impl VLiveCallback for Handler {
-///     fn on_new() {
-///         println("New video uploaded!");
+///     fn on_new(video: VLiveVideo) {
+///         println("New video {} uploaded!", video.channel_name);
 ///     }
 /// }
+/// //Handler needs to be passable between threads
+/// impl Copy for Handler {}
+/// impl Clone for Handler { fn clone(&self) -> Self { Self {} } }
 ///
 /// fn main() {
 ///     let _ = VLive::new(Handler {});
@@ -43,30 +48,45 @@ pub mod vlive {
     }
 
     pub struct VLiveVideo {
-        video_id: String,
-        video_seq: u32,
-        video_title: String,
-        video_type: VideoType,
-        video_thumbnail: Option<String>,
-        channel_id: String,
-        channel_seq: u32,
-        channel_name: String,
-        channel_type: ChannelType,
+        pub video_id: String,
+        pub video_seq: u32,
+        pub video_title: String,
+        pub video_type: VideoType,
+        pub video_thumbnail: Option<String>,
+        pub channel_id: String,
+        pub channel_seq: u32,
+        pub channel_name: String,
+        pub channel_type: ChannelType,
+    }
+    impl VLiveVideo {
+        fn new() -> Self {
+            VLiveVideo {
+                video_id: String::new(),
+                video_seq: 0,
+                video_title: String::new(),
+                video_type: VideoType::VOD,
+                video_thumbnail: None,
+                channel_id: String::new(),
+                channel_seq: 0,
+                channel_name: String::new(),
+                channel_type: ChannelType::BASIC,
+            }
+        }
     }
 
     /// Implement this in your own listener
-    pub trait VLiveCallback {
-        fn on_new(self);
+    pub trait VLiveCallback: Copy + Send {
+        fn on_new(self, video: VLiveVideo);
     }
 
-    pub struct VLive<CB> where CB: VLiveCallback {
+    pub struct VLive<CB> where CB: VLiveCallback + 'static {
         /// Up on new video, this callback is called
         callback: CB,
         /// ID of the latest video
         latest_id: u32,
     }
 
-    impl<CB> VLive<CB> where CB: VLiveCallback {
+    impl<CB> VLive<CB> where CB: VLiveCallback + 'static {
 
         /// New listener
         pub fn new(callback: CB) -> Self {
@@ -94,12 +114,14 @@ pub mod vlive {
         pub fn run_async(self) -> thread::JoinHandle<()> {
             let (tx, rx) = channel();
 
-            let guard = thread::spawn(move || {
+            let callback = self.callback;
 
+            let guard = thread::spawn(move || {
                 //Our parsing code
                 //TODO: Move this somewhere else
                 let parse_node = |node: select::node::Node| {
-                    println!("{}", node.text());
+                    println!("Parsed");
+                    VLiveVideo::new()
                 };
 
                 loop {
@@ -121,7 +143,10 @@ pub mod vlive {
                     let document = select::document::Document::from(request);
                     for node in document.find(Class("video_list_cont")) {
                         let node = parse_node(node);
+                        println!(node.video_id);
                     }
+
+                    //callback.on_new();
 
                     thread::sleep_ms(10000);
                 }
@@ -132,20 +157,4 @@ pub mod vlive {
     }
 }
 
-#[cfg(test)]
-mod tests {
-
-    struct Listener;
-    impl super::vlive::VLiveCallback for Listener {
-        fn on_new(self) {
-            println!("Hello from callback")
-        }
-    }
-
-    #[test]
-    fn callback() {
-        use std::thread;
-        let x = super::vlive::VLive::new(Listener);
-        x.run();
-    }
-}
+mod tests;
