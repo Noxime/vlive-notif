@@ -1,0 +1,8 @@
+[package]
+name = "vlive-notifs"
+version = "0.1.0"
+authors = ["Aaro Perämaa <aaro.peramaa@gmail.com>"]
+
+[dependencies]
+requests = "0.0.30"
+select = "0.4.2"
